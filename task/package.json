@@ -6,24 +6,26 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist/index.js"
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsc -p tsconfig.json"
   },
   "dependencies": {
     "axios": "^1.7.7",
     "azure-pipelines-task-lib": "^4.0.0",
     "cheerio": "^1.0.0",
     "fast-glob": "^3.3.2",
-    "micromatch": "^4.0.7"
+    "micromatch": "^4.0.7",
+    "undici": "^6.22.0"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
-    "typescript": "^5.6.3",
-    "@types/node": "^18.19.64",
+    "@types/cheerio": "^1.0.0",
     "@types/micromatch": "^4.0.9",
-    "@types/cheerio": "^1.0.0"
+    "@types/node": "^18.19.64",
+    "esbuild": "^0.24.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3"
   },
   "overrides": {
-    "node-fetch": "2.6.12",
-    "undici": "5.28.4"
+    "node-fetch": "2.6.12"
   }
 }
