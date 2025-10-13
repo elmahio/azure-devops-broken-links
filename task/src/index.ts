@@ -29,7 +29,7 @@ function splitGlobs(input?: string): string[] {
 
 function toRegexFromWildcard(pattern: string): RegExp {
   const esc = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/[.+^${}()|[\]\\?]/g, "\\$&")
     .replace(/\*\*/g, ".*")
     .replace(/\*/g, "[^\\s\"'<>]*");
   return new RegExp("^" + esc + "$", "i");
