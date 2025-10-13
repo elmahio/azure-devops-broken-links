@@ -33,7 +33,7 @@
       "id": "broken-links-task",
       "type": "ms.vss-distributed-task.task",
       "targets": ["ms.vss-distributed-task.tasks"],
-      "properties": { "name": "task/task.json" }
+      "properties": { "name": "task" }
     }
   ],
   "galleryFlags": [
