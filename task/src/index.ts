@@ -172,7 +172,8 @@ async function main() {
     });
     tl.warning(`Files matched: ${files.length}`);
 
-    const allLinks: Array<{ file: string; url: string }> = [];
+    // --- Collect references: URL -> set of files
+    const urlToFiles = new Map<string, Set<string>>();
 
     for (const f of files) {
       tl.warning(`Reading: ${f}`);
@@ -187,45 +188,48 @@ async function main() {
           tl.warning(`  Ignored: ${u}`);
           continue;
         }
-        allLinks.push({ file: f, url: u });
+        if (!urlToFiles.has(u)) urlToFiles.set(u, new Set<string>());
+        urlToFiles.get(u)!.add(f);
       }
     }
 
-    // De-duplicate by file+url
-    const tasks = Array.from(new Map(allLinks.map(x => [`${x.file}>>${x.url}`, x])).values());
-    tl.warning(`Total unique links: ${tasks.length}`);
+    const uniqueUrls = Array.from(urlToFiles.keys());
+    tl.warning(`Unique URLs to check: ${uniqueUrls.length}`);
 
-    const broken: Broken[] = [];
+    type CheckResult = { status?: number; error?: string };
+    const brokenByUrl = new Map<string, CheckResult>();
+
+    // --- Check each unique URL once
     let idx = 0;
-
     async function worker() {
       while (true) {
         const i = idx++;
-        if (i >= tasks.length) break;
-        const { file, url } = tasks[i];
+        if (i >= uniqueUrls.length) break;
+        const url = uniqueUrls[i];
         const res = await checkUrl(client, url, allowed);
-        if (!res.ok) {
-          broken.push({ file, url, status: res.status, error: res.error });
-        }
+        if (!res.ok) brokenByUrl.set(url, { status: res.status, error: res.error });
       }
     }
-
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
-    if (broken.length > 0) {
-      tl.warning(`Broken links: ${broken.length}`);
-      for (const b of broken) {
-        const rel = path.relative(process.cwd(), b.file) || b.file;
-        const msg = `${rel}: ${b.url} -> ${b.status ?? b.error ?? "unknown"}`;
+    // --- Reporting: one entry per broken URL, listing all source files
+    if (brokenByUrl.size > 0) {
+      tl.warning(`Broken links: ${brokenByUrl.size}`);
+      for (const [url, info] of brokenByUrl.entries()) {
+        const filesRef = Array.from(urlToFiles.get(url) || []);
+        const rels = filesRef.map(f => path.relative(process.cwd(), f) || f);
+        const header = `${url} -> ${info.status ?? info.error ?? "unknown"}`;
+        const list = rels.map(r => `  - ${r}`).join("\n");
+        const msg = `${header}\nreferenced by:\n${list}`;
         if (failOnBroken) tl.error(msg); else tl.warning(msg);
       }
       if (failOnBroken) {
-        tl.setResult(tl.TaskResult.Failed, `Found ${broken.length} broken link(s).`);
+        tl.setResult(tl.TaskResult.Failed, `Found ${brokenByUrl.size} broken unique URL(s).`);
         return;
       }
     }
 
-    tl.setResult(tl.TaskResult.Succeeded, `Checked ${tasks.length} link(s). Broken: ${broken.length}.`);
+    tl.setResult(tl.TaskResult.Succeeded, `Checked ${uniqueUrls.length} unique URL(s). Broken: ${brokenByUrl.size}.`);
   } catch (err: any) {
     tl.error(`Task error: ${err?.stack || err}`);
     tl.setResult(tl.TaskResult.Failed, `Task error: ${err?.message || String(err)}`);
