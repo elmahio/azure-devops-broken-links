@@ -43,8 +43,6 @@ function extractLinks(file: string, content: string): string[] {
   const ext = path.extname(file).toLowerCase();
   const links: string[] = [];
 
-  tl.warning(`Extracting links from ${file}`);
-
   // DOM parse for typical HTML-like files
   if (/\.(html?|cshtml|razor|vue|svelte)$/.test(ext)) {
     try {
@@ -57,7 +55,7 @@ function extractLinks(file: string, content: string): string[] {
         }
       });
     } catch (e) {
-      tl.warning(`Cheerio parse failed for ${file}: ${String(e)}`);
+      tl.error(`Cheerio parse failed for ${file}: ${String(e)}`);
     }
   }
 
@@ -76,7 +74,6 @@ function extractLinks(file: string, content: string): string[] {
   }
 
   const abs = Array.from(new Set(links.filter(isAbsoluteHttp)));
-  tl.warning(`  Found ${abs.length} absolute links`);
   return abs;
 }
 
@@ -110,26 +107,22 @@ async function checkUrl(
   allowed: (n: number) => boolean
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
-    tl.warning(`Checking: ${url}`);
     let res: AxiosResponse;
     try {
       res = await client.head(url);
     } catch {
       res = await client.get(url);
     }
-    tl.warning(`  -> ${res.status}`);
     return { ok: allowed(res.status), status: res.status };
   } catch (e: any) {
     const code = e?.code || e?.response?.status || e?.message || "request_error";
-    tl.warning(`  ERROR ${url}: ${code}`);
+    tl.error(`  ERROR ${url}: ${code}`);
     return { ok: false, error: String(code) };
   }
 }
 
 async function main() {
   try {
-    tl.warning("Starting BrokenLinksChecker");
-
     // Determine workspace root for globbing
     const repoRoot = tl.getVariable("Build.SourcesDirectory") || process.cwd();
 
@@ -158,10 +151,6 @@ async function main() {
     const timeoutMs = Math.max(1, parseInt(tl.getInput("timeoutMs", false) || "10000", 10));
     const allowedStatusSpec = tl.getInput("allowedStatus", false) || "200-299,301,302,307,308";
 
-    tl.warning(`repoRoot: ${repoRoot}`);
-    tl.warning(`includeGlobs(final): ${includeGlobs.join(" | ")}`);
-    tl.warning(`excludeGlobs(final): ${excludeGlobs.join(" | ")}`);
-
     const ignoreUrlRegexes = ignoreUrlPatterns.map(toRegexFromWildcard);
     const allowed = buildAllowedStatusFn(allowedStatusSpec);
     const client = createHttpClient(timeoutMs);
@@ -175,22 +164,18 @@ async function main() {
       followSymbolicLinks: true,
       absolute: true
     });
-    tl.warning(`Files matched: ${files.length}`);
 
     // --- Collect references: URL -> set of files
     const urlToFiles = new Map<string, Set<string>>();
 
     for (const f of files) {
-      tl.warning(`Reading: ${f}`);
       let content: string;
       try { content = fs.readFileSync(f, "utf8"); } catch (e) {
-        tl.warning(`  Could not read file: ${String(e)}`);
         continue;
       }
       const links = extractLinks(f, content);
       for (const u of links) {
         if (ignoreUrlRegexes.some(r => r.test(u))) {
-          tl.warning(`  Ignored: ${u}`);
           continue;
         }
         if (!urlToFiles.has(u)) urlToFiles.set(u, new Set<string>());
@@ -199,7 +184,6 @@ async function main() {
     }
 
     const uniqueUrls = Array.from(urlToFiles.keys());
-    tl.warning(`Unique URLs to check: ${uniqueUrls.length}`);
 
     type CheckResult = { status?: number; error?: string };
     const brokenByUrl = new Map<string, CheckResult>();
@@ -219,7 +203,6 @@ async function main() {
 
     // --- Reporting: one entry per broken URL, listing all source files
     if (brokenByUrl.size > 0) {
-      tl.warning(`Broken links: ${brokenByUrl.size}`);
       for (const [url, info] of brokenByUrl.entries()) {
         const filesRef = Array.from(urlToFiles.get(url) || []);
         const rels = filesRef.map(f => path.relative(process.cwd(), f) || f);
