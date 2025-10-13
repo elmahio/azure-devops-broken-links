@@ -63,10 +63,10 @@
   "minimumAgentVersion": "2.144.0",
   "execution": {
     "Node20": {
-      "target": "index.js"
+      "target": "dist/index.js"
     },
     "Node16": {
-      "target": "index.js"
+      "target": "dist/index.js"
     }
   }
 }
