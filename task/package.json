@@ -10,9 +10,9 @@
     "build": "npm run clean && tsc -p tsconfig.json"
   },
   "dependencies": {
+    "cheerio": "1.0.0-rc.12",
     "axios": "^1.7.7",
     "azure-pipelines-task-lib": "^4.0.0",
-    "cheerio": "^1.0.0",
     "fast-glob": "^3.3.2",
     "micromatch": "^4.0.7"
   },
@@ -26,7 +26,7 @@
     "undici": "5.28.4"
   },
   "overrides": {
-    "node-fetch": "2.6.12",
+    "cheerio": "1.0.0-rc.12",
     "undici": "5.28.4"
   }
 }
