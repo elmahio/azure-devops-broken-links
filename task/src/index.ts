@@ -21,12 +21,10 @@ import * as https from "https";
 
 type Broken = { file: string; url: string; status?: number; error?: string };
 
-function splitList(v?: string): string[] {
-  if (!v) return [];
-  return v
-    .split(/\r?\n|,/)
-    .map(s => s.trim())
-    .filter(Boolean);
+// Use newline-only splitting to support YAML block scalars (|) without breaking brace globs.
+function splitGlobs(input?: string): string[] {
+  if (!input) return [];
+  return input.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
 function toRegexFromWildcard(pattern: string): RegExp {
@@ -126,22 +124,51 @@ async function main() {
   try {
     tl.warning("Starting BrokenLinksChecker");
 
-    const includeGlobs = splitList(tl.getInput("includeGlobs", false)) || ["**/*.{html,htm,cshtml,razor,vue,jsx,tsx,svelte,md}"];
-    const excludeGlobs = splitList(tl.getInput("excludeFileGlobs", false));
-    const ignoreUrlPatterns = splitList(tl.getInput("ignoreUrlPatterns", false));
+    // Determine workspace root for globbing
+    const repoRoot = tl.getVariable("Build.SourcesDirectory") || process.cwd();
+
+    // Read inputs and support YAML multi-line lists
+    const includeInput = tl.getInput("includeGlobs", false);
+    let includeGlobs = splitGlobs(includeInput);
+    if (includeGlobs.length === 0) {
+      // Fallback without brace-globs to avoid comma pitfalls
+      includeGlobs = [
+        "**/*.html",
+        "**/*.htm",
+        "**/*.cshtml",
+        "**/*.razor",
+        "**/*.vue",
+        "**/*.jsx",
+        "**/*.tsx",
+        "**/*.svelte",
+        "**/*.md"
+      ];
+    }
+
+    const excludeGlobs = splitGlobs(tl.getInput("excludeFileGlobs", false));
+    const ignoreUrlPatterns = splitGlobs(tl.getInput("ignoreUrlPatterns", false));
     const failOnBroken = tl.getBoolInput("failOnBroken", false);
     const concurrency = Math.max(1, parseInt(tl.getInput("concurrency", false) || "16", 10));
     const timeoutMs = Math.max(1, parseInt(tl.getInput("timeoutMs", false) || "10000", 10));
     const allowedStatusSpec = tl.getInput("allowedStatus", false) || "200-299,301,302,307,308";
 
-    tl.warning(`includeGlobs: ${includeGlobs.join(", ")}`);
-    tl.warning(`excludeGlobs: ${excludeGlobs.join(", ")}`);
+    tl.warning(`repoRoot: ${repoRoot}`);
+    tl.warning(`includeGlobs(final): ${includeGlobs.join(" | ")}`);
+    tl.warning(`excludeGlobs(final): ${excludeGlobs.join(" | ")}`);
 
     const ignoreUrlRegexes = ignoreUrlPatterns.map(toRegexFromWildcard);
     const allowed = buildAllowedStatusFn(allowedStatusSpec);
     const client = createHttpClient(timeoutMs);
 
-    const files = await fg(includeGlobs, { dot: false, ignore: excludeGlobs, onlyFiles: true, followSymbolicLinks: true });
+    // Use repoRoot as cwd so ** globs resolve within source tree
+    const files = await fg(includeGlobs, {
+      cwd: repoRoot,
+      dot: false,
+      ignore: excludeGlobs,
+      onlyFiles: true,
+      followSymbolicLinks: true,
+      absolute: true
+    });
     tl.warning(`Files matched: ${files.length}`);
 
     const allLinks: Array<{ file: string; url: string }> = [];
@@ -163,6 +190,7 @@ async function main() {
       }
     }
 
+    // De-duplicate by file+url
     const tasks = Array.from(new Map(allLinks.map(x => [`${x.file}>>${x.url}`, x])).values());
     tl.warning(`Total unique links: ${tasks.length}`);
 
