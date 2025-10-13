@@ -1,6 +1,5 @@
 // --- Node16 polyfill: add Web Streams globals if any lib expects them
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const sw = require("stream/web");
   // @ts-ignore
   if (!global.ReadableStream && sw?.ReadableStream) global.ReadableStream = sw.ReadableStream;
@@ -46,6 +45,8 @@ function extractLinks(file: string, content: string): string[] {
   const ext = path.extname(file).toLowerCase();
   const links: string[] = [];
 
+  tl.info(`Extracting links from ${file}`);
+
   // DOM parse for typical HTML-like files
   if (/\.(html?|cshtml|razor|vue|svelte)$/.test(ext)) {
     try {
@@ -57,8 +58,8 @@ function extractLinks(file: string, content: string): string[] {
           if (v) links.push(v);
         }
       });
-    } catch {
-      // fall back to regex below
+    } catch (e) {
+      tl.info(`Cheerio parse failed for ${file}: ${String(e)}`);
     }
   }
 
@@ -70,7 +71,9 @@ function extractLinks(file: string, content: string): string[] {
     links.push(u);
   }
 
-  return Array.from(new Set(links.filter(isAbsoluteHttp)));
+  const abs = Array.from(new Set(links.filter(isAbsoluteHttp)));
+  tl.info(`  Found ${abs.length} absolute links`);
+  return abs;
 }
 
 function buildAllowedStatusFn(spec: string): (n: number) => boolean {
@@ -91,7 +94,6 @@ function createHttpClient(timeoutMs: number): AxiosInstance {
     timeout: timeoutMs,
     maxRedirects: 10,
     validateStatus: () => true,
-    // Use Node adapters; safe for Node16 and Node20
     httpAgent: new http.Agent({ keepAlive: true }),
     httpsAgent: new https.Agent({ keepAlive: true }),
     headers: { "User-Agent": "BrokenLinksChecker/1.0" }
@@ -104,22 +106,26 @@ async function checkUrl(
   allowed: (n: number) => boolean
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
+    tl.info(`Checking: ${url}`);
     let res: AxiosResponse;
     try {
       res = await client.head(url);
     } catch {
-      // Some endpoints reject HEAD; try GET
       res = await client.get(url);
     }
+    tl.info(`  -> ${res.status}`);
     return { ok: allowed(res.status), status: res.status };
   } catch (e: any) {
     const code = e?.code || e?.response?.status || e?.message || "request_error";
+    tl.info(`  ERROR ${url}: ${code}`);
     return { ok: false, error: String(code) };
   }
 }
 
 async function main() {
   try {
+    tl.info("Starting BrokenLinksChecker");
+
     const includeGlobs = splitList(tl.getInput("includeGlobs", false)) || ["**/*.{html,htm,cshtml,razor,vue,jsx,tsx,svelte,md}"];
     const excludeGlobs = splitList(tl.getInput("excludeFileGlobs", false));
     const ignoreUrlPatterns = splitList(tl.getInput("ignoreUrlPatterns", false));
@@ -128,28 +134,37 @@ async function main() {
     const timeoutMs = Math.max(1, parseInt(tl.getInput("timeoutMs", false) || "10000", 10));
     const allowedStatusSpec = tl.getInput("allowedStatus", false) || "200-299,301,302,307,308";
 
+    tl.info(`includeGlobs: ${includeGlobs.join(", ")}`);
+    tl.info(`excludeGlobs: ${excludeGlobs.join(", ")}`);
+
     const ignoreUrlRegexes = ignoreUrlPatterns.map(toRegexFromWildcard);
     const allowed = buildAllowedStatusFn(allowedStatusSpec);
     const client = createHttpClient(timeoutMs);
 
     const files = await fg(includeGlobs, { dot: false, ignore: excludeGlobs, onlyFiles: true, followSymbolicLinks: true });
-    tl.debug(`Files matched: ${files.length}`);
+    tl.info(`Files matched: ${files.length}`);
 
     const allLinks: Array<{ file: string; url: string }> = [];
 
     for (const f of files) {
+      tl.info(`Reading: ${f}`);
       let content: string;
-      try { content = fs.readFileSync(f, "utf8"); } catch { continue; }
+      try { content = fs.readFileSync(f, "utf8"); } catch (e) {
+        tl.info(`  Could not read file: ${String(e)}`);
+        continue;
+      }
       const links = extractLinks(f, content);
       for (const u of links) {
-        if (ignoreUrlRegexes.some(r => r.test(u))) continue;
+        if (ignoreUrlRegexes.some(r => r.test(u))) {
+          tl.info(`  Ignored: ${u}`);
+          continue;
+        }
         allLinks.push({ file: f, url: u });
       }
     }
 
-    // Unique by file+url
     const tasks = Array.from(new Map(allLinks.map(x => [`${x.file}>>${x.url}`, x])).values());
-    tl.debug(`Links to check: ${tasks.length}`);
+    tl.info(`Total unique links: ${tasks.length}`);
 
     const broken: Broken[] = [];
     let idx = 0;
@@ -160,19 +175,21 @@ async function main() {
         if (i >= tasks.length) break;
         const { file, url } = tasks[i];
         const res = await checkUrl(client, url, allowed);
-        if (!res.ok) broken.push({ file, url, status: res.status, error: res.error });
+        if (!res.ok) {
+          broken.push({ file, url, status: res.status, error: res.error });
+        }
       }
     }
 
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
     if (broken.length > 0) {
+      tl.info(`Broken links: ${broken.length}`);
       for (const b of broken) {
         const rel = path.relative(process.cwd(), b.file) || b.file;
         const msg = `${rel}: ${b.url} -> ${b.status ?? b.error ?? "unknown"}`;
         if (failOnBroken) tl.error(msg); else tl.warning(msg);
       }
-      tl.debug(`Broken count: ${broken.length}`);
       if (failOnBroken) {
         tl.setResult(tl.TaskResult.Failed, `Found ${broken.length} broken link(s).`);
         return;
@@ -181,6 +198,7 @@ async function main() {
 
     tl.setResult(tl.TaskResult.Succeeded, `Checked ${tasks.length} link(s). Broken: ${broken.length}.`);
   } catch (err: any) {
+    tl.error(`Task error: ${err?.stack || err}`);
     tl.setResult(tl.TaskResult.Failed, `Task error: ${err?.message || String(err)}`);
   }
 }
