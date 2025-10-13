@@ -151,4 +151,7 @@ async function main() {
   }
 }
 
+console.log('__dirname', __dirname);
+console.log('resolve TL', require.resolve('azure-pipelines-task-lib/task'));
+
 main();
