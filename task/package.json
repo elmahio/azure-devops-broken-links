@@ -26,6 +26,7 @@
     "undici": "5.28.4"
   },
   "overrides": {
-    "node-fetch": "2.6.12"
+    "node-fetch": "2.6.12",
+    "undici": "5.28.4"
   }
 }
