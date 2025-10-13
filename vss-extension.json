@@ -8,14 +8,12 @@
   "public": false,
   "categories": ["Azure Pipelines"],
   "targets": [{ "id": "Microsoft.VisualStudio.Services" }],
-  "icons": { "default": "task/icon.png" },
+  "icons": { "default": "icon.png" },
   "files": [
     { "path": "task" },
     { "path": "overview.md", "addressable": true }
   ],
-  "content": {
-    "details": { "path": "overview.md" }
-  },
+  "content": { "details": { "path": "overview.md" } },
   "tags": [
     "links",
     "broken-links",
