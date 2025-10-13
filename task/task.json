@@ -5,8 +5,12 @@
   "description": "Finds absolute links in files and checks them.",
   "helpMarkDown": "Scans for http/https links. Ignores relative links.",
   "category": "Utility",
-  "author": "you",
-  "version": { "Major": 0, "Minor": 1, "Patch": 0 },
+  "author": "elmah.io",
+  "version": {
+    "Major": 0,
+    "Minor": 1,
+    "Patch": 0
+  },
   "instanceNameFormat": "Broken Links Checker",
   "inputs": [
     {

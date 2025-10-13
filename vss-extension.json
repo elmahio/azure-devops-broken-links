@@ -9,6 +9,14 @@
   "categories": ["Azure Pipelines"],
   "targets": [{ "id": "Microsoft.VisualStudio.Services" }],
   "icons": { "default": "icon.png" },
+  "links": {
+    "support": {
+      "uri": "https://github.com/elmahio/azure-devops-broken-links/issues"
+    },
+    "license": {
+      "uri": "https://github.com/elmahio/azure-devops-broken-links/blob/main/LICENSE"
+    }
+  },
   "files": [
     { "path": "task" },
     { "path": "overview.md", "addressable": true }
