@@ -1,10 +1,24 @@
+// --- Node16 polyfill: add Web Streams globals if any lib expects them
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const sw = require("stream/web");
+  // @ts-ignore
+  if (!global.ReadableStream && sw?.ReadableStream) global.ReadableStream = sw.ReadableStream;
+  // @ts-ignore
+  if (!global.WritableStream && sw?.WritableStream) global.WritableStream = sw.WritableStream;
+  // @ts-ignore
+  if (!global.TransformStream && sw?.TransformStream) global.TransformStream = sw.TransformStream;
+} catch {}
+
+// --- Imports
 import * as tl from "azure-pipelines-task-lib/task";
 import fg from "fast-glob";
-import micromatch from "micromatch";
-import axios from "axios";
+import axios, { AxiosInstance, AxiosResponse } from "axios";
 import * as fs from "fs";
 import * as path from "path";
 import * as cheerio from "cheerio";
+import * as http from "http";
+import * as https from "https";
 
 type Broken = { file: string; url: string; status?: number; error?: string };
 
@@ -32,6 +46,7 @@ function extractLinks(file: string, content: string): string[] {
   const ext = path.extname(file).toLowerCase();
   const links: string[] = [];
 
+  // DOM parse for typical HTML-like files
   if (/\.(html?|cshtml|razor|vue|svelte)$/.test(ext)) {
     try {
       const $ = cheerio.load(content, { xmlMode: false });
@@ -43,32 +58,19 @@ function extractLinks(file: string, content: string): string[] {
         }
       });
     } catch {
-      // fallback to regex below
+      // fall back to regex below
     }
   }
 
-  const regex = /https?:\/\/[^\s"'<>)]+/gi;
+  // Fallback regex: catch http(s) URLs in text
+  const regex = /\bhttps?:\/\/[^\s"'<>)\]]+/gi;
   let m: RegExpExecArray | null;
-  while ((m = regex.exec(content)) !== null) links.push(m[0]);
+  while ((m = regex.exec(content)) !== null) {
+    let u = m[0].replace(/[),.;:!?]+$/, "");
+    links.push(u);
+  }
 
   return Array.from(new Set(links.filter(isAbsoluteHttp)));
-}
-
-async function checkUrl(
-  url: string,
-  timeoutMs: number,
-  allowed: (n: number) => boolean
-): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const client = axios.create({ maxRedirects: 10, timeout: timeoutMs, validateStatus: () => true });
-  try {
-    let res = await client.head(url);
-    if (res.status === 405 || res.status === 501) {
-      res = await client.get(url);
-    }
-    return { ok: allowed(res.status), status: res.status };
-  } catch (e: any) {
-    return { ok: false, error: e?.code || e?.message || "request_error" };
-  }
 }
 
 function buildAllowedStatusFn(spec: string): (n: number) => boolean {
@@ -80,7 +82,40 @@ function buildAllowedStatusFn(spec: string): (n: number) => boolean {
     const s = /^(\d{3})$/.exec(p);
     if (s) { ranges.push([+s[1], +s[1]]); }
   }
+  if (ranges.length === 0) ranges.push([200, 299]);
   return (n: number) => ranges.some(([a, b]) => n >= a && n <= b);
+}
+
+function createHttpClient(timeoutMs: number): AxiosInstance {
+  return axios.create({
+    timeout: timeoutMs,
+    maxRedirects: 10,
+    validateStatus: () => true,
+    // Use Node adapters; safe for Node16 and Node20
+    httpAgent: new http.Agent({ keepAlive: true }),
+    httpsAgent: new https.Agent({ keepAlive: true }),
+    headers: { "User-Agent": "BrokenLinksChecker/1.0" }
+  });
+}
+
+async function checkUrl(
+  client: AxiosInstance,
+  url: string,
+  allowed: (n: number) => boolean
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  try {
+    let res: AxiosResponse;
+    try {
+      res = await client.head(url);
+    } catch {
+      // Some endpoints reject HEAD; try GET
+      res = await client.get(url);
+    }
+    return { ok: allowed(res.status), status: res.status };
+  } catch (e: any) {
+    const code = e?.code || e?.response?.status || e?.message || "request_error";
+    return { ok: false, error: String(code) };
+  }
 }
 
 async function main() {
@@ -89,12 +124,13 @@ async function main() {
     const excludeGlobs = splitList(tl.getInput("excludeFileGlobs", false));
     const ignoreUrlPatterns = splitList(tl.getInput("ignoreUrlPatterns", false));
     const failOnBroken = tl.getBoolInput("failOnBroken", false);
-    const concurrency = parseInt(tl.getInput("concurrency", false) || "16", 10);
-    const timeoutMs = parseInt(tl.getInput("timeoutMs", false) || "10000", 10);
+    const concurrency = Math.max(1, parseInt(tl.getInput("concurrency", false) || "16", 10));
+    const timeoutMs = Math.max(1, parseInt(tl.getInput("timeoutMs", false) || "10000", 10));
     const allowedStatusSpec = tl.getInput("allowedStatus", false) || "200-299,301,302,307,308";
 
     const ignoreUrlRegexes = ignoreUrlPatterns.map(toRegexFromWildcard);
     const allowed = buildAllowedStatusFn(allowedStatusSpec);
+    const client = createHttpClient(timeoutMs);
 
     const files = await fg(includeGlobs, { dot: false, ignore: excludeGlobs, onlyFiles: true, followSymbolicLinks: true });
     tl.debug(`Files matched: ${files.length}`);
@@ -111,8 +147,8 @@ async function main() {
       }
     }
 
+    // Unique by file+url
     const tasks = Array.from(new Map(allLinks.map(x => [`${x.file}>>${x.url}`, x])).values());
-
     tl.debug(`Links to check: ${tasks.length}`);
 
     const broken: Broken[] = [];
@@ -123,19 +159,17 @@ async function main() {
         const i = idx++;
         if (i >= tasks.length) break;
         const { file, url } = tasks[i];
-        const res = await checkUrl(url, timeoutMs, allowed);
-        if (!res.ok) {
-          broken.push({ file, url, status: res.status, error: res.error });
-        }
+        const res = await checkUrl(client, url, allowed);
+        if (!res.ok) broken.push({ file, url, status: res.status, error: res.error });
       }
     }
 
-    const workers = Array.from({ length: Math.max(1, concurrency) }, () => worker());
-    await Promise.all(workers);
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
     if (broken.length > 0) {
       for (const b of broken) {
-        const msg = `${b.file}: ${b.url} -> ${b.status ?? b.error ?? "unknown"}`;
+        const rel = path.relative(process.cwd(), b.file) || b.file;
+        const msg = `${rel}: ${b.url} -> ${b.status ?? b.error ?? "unknown"}`;
         if (failOnBroken) tl.error(msg); else tl.warning(msg);
       }
       tl.debug(`Broken count: ${broken.length}`);
@@ -150,8 +184,5 @@ async function main() {
     tl.setResult(tl.TaskResult.Failed, `Task error: ${err?.message || String(err)}`);
   }
 }
-
-console.log('__dirname', __dirname);
-console.log('resolve TL', require.resolve('azure-pipelines-task-lib/task'));
 
 main();
