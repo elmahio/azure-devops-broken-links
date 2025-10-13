@@ -60,6 +60,7 @@
       "required": false
     }
   ],
+  "minimumAgentVersion": "3.220.5",
   "execution": {
     "Node20": { "target": "dist/index.js" }
   }
