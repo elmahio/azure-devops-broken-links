@@ -3,12 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Checks absolute links in source files during CI.",
-  "main": "task/dist/index.js",
+  "main": "dist/index.js",
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "pack": "tfx extension create --manifest-globs vss-extension.json",
-    "test": "node -e \"console.log('no tests yet')\""
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "axios": "^1.7.7",

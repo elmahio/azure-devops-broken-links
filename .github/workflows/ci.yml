@@ -19,6 +19,7 @@ jobs:
           node-version: 20
 
       - name: Install Dependencies
+        working-directory: task
         run: npm install
 
       - name: Patch vss-extension.json
@@ -38,7 +39,8 @@ jobs:
             = /version/Patch => "${{ github.run_number }}"
           fail-if-no-files-patched: true
 
-      - name: Build task (ts -> task/dist/index.js)
+      - name: Build task
+        working-directory: task
         run: npm run build
 
       - name: Install tfx
