@@ -1,0 +1,44 @@
+{
+  "manifestVersion": 1,
+  "id": "broken-links-checker",
+  "publisher": "elmahio",
+  "version": "0.1.0",
+  "name": "Broken Links Checker",
+  "description": "Scans files for absolute URLs and fails the build on broken links.",
+  "public": false,
+  "categories": ["Azure Pipelines"],
+  "targets": [{ "id": "Microsoft.VisualStudio.Services" }],
+  "icons": { "default": "task/icon.png" },
+  "files": [
+    { "path": "task" },
+    { "path": "overview.md", "addressable": true }
+  ],
+  "content": {
+    "details": { "path": "overview.md" }
+  },
+  "tags": [
+    "links",
+    "broken-links",
+    "validation",
+    "url",
+    "qa",
+    "automation",
+    "ci",
+    "pipeline"
+  ],
+  "branding": {
+      "color": "rgb(13, 165, 142)",
+      "theme": "dark"
+  },
+  "contributions": [
+    {
+      "id": "broken-links-task",
+      "type": "ms.vss-distributed-task.task",
+      "targets": ["ms.vss-distributed-task.tasks"],
+      "properties": { "name": "task" }
+    }
+  ],
+  "galleryFlags": [
+      "Public"
+  ]
+}
