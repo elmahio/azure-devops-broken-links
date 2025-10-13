@@ -65,7 +65,8 @@ function extractLinks(file: string, content: string): string[] {
   const regex = /\bhttps?:\/\/[^\s"'<>)\]]+/gi;
   let m: RegExpExecArray | null;
   while ((m = regex.exec(content)) !== null) {
-    let u = m[0].replace(/[),.;:!?]+$/, "");
+    // remove common trailing punctuation or escaped quotes
+    let u = m[0].replace(/\\["']$/, "").replace(/[),.;:!?]+$/, "");
     links.push(u);
   }
 
