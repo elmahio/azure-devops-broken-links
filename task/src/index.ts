@@ -45,7 +45,7 @@ function extractLinks(file: string, content: string): string[] {
   const ext = path.extname(file).toLowerCase();
   const links: string[] = [];
 
-  tl.info(`Extracting links from ${file}`);
+  console.log(`Extracting links from ${file}`);
 
   // DOM parse for typical HTML-like files
   if (/\.(html?|cshtml|razor|vue|svelte)$/.test(ext)) {
@@ -59,7 +59,7 @@ function extractLinks(file: string, content: string): string[] {
         }
       });
     } catch (e) {
-      tl.info(`Cheerio parse failed for ${file}: ${String(e)}`);
+      console.log(`Cheerio parse failed for ${file}: ${String(e)}`);
     }
   }
 
@@ -72,7 +72,7 @@ function extractLinks(file: string, content: string): string[] {
   }
 
   const abs = Array.from(new Set(links.filter(isAbsoluteHttp)));
-  tl.info(`  Found ${abs.length} absolute links`);
+  console.log(`  Found ${abs.length} absolute links`);
   return abs;
 }
 
@@ -106,25 +106,25 @@ async function checkUrl(
   allowed: (n: number) => boolean
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
-    tl.info(`Checking: ${url}`);
+    console.log(`Checking: ${url}`);
     let res: AxiosResponse;
     try {
       res = await client.head(url);
     } catch {
       res = await client.get(url);
     }
-    tl.info(`  -> ${res.status}`);
+    console.log(`  -> ${res.status}`);
     return { ok: allowed(res.status), status: res.status };
   } catch (e: any) {
     const code = e?.code || e?.response?.status || e?.message || "request_error";
-    tl.info(`  ERROR ${url}: ${code}`);
+    console.log(`  ERROR ${url}: ${code}`);
     return { ok: false, error: String(code) };
   }
 }
 
 async function main() {
   try {
-    tl.info("Starting BrokenLinksChecker");
+    console.log("Starting BrokenLinksChecker");
 
     const includeGlobs = splitList(tl.getInput("includeGlobs", false)) || ["**/*.{html,htm,cshtml,razor,vue,jsx,tsx,svelte,md}"];
     const excludeGlobs = splitList(tl.getInput("excludeFileGlobs", false));
@@ -134,29 +134,29 @@ async function main() {
     const timeoutMs = Math.max(1, parseInt(tl.getInput("timeoutMs", false) || "10000", 10));
     const allowedStatusSpec = tl.getInput("allowedStatus", false) || "200-299,301,302,307,308";
 
-    tl.info(`includeGlobs: ${includeGlobs.join(", ")}`);
-    tl.info(`excludeGlobs: ${excludeGlobs.join(", ")}`);
+    console.log(`includeGlobs: ${includeGlobs.join(", ")}`);
+    console.log(`excludeGlobs: ${excludeGlobs.join(", ")}`);
 
     const ignoreUrlRegexes = ignoreUrlPatterns.map(toRegexFromWildcard);
     const allowed = buildAllowedStatusFn(allowedStatusSpec);
     const client = createHttpClient(timeoutMs);
 
     const files = await fg(includeGlobs, { dot: false, ignore: excludeGlobs, onlyFiles: true, followSymbolicLinks: true });
-    tl.info(`Files matched: ${files.length}`);
+    console.log(`Files matched: ${files.length}`);
 
     const allLinks: Array<{ file: string; url: string }> = [];
 
     for (const f of files) {
-      tl.info(`Reading: ${f}`);
+      console.log(`Reading: ${f}`);
       let content: string;
       try { content = fs.readFileSync(f, "utf8"); } catch (e) {
-        tl.info(`  Could not read file: ${String(e)}`);
+        console.log(`  Could not read file: ${String(e)}`);
         continue;
       }
       const links = extractLinks(f, content);
       for (const u of links) {
         if (ignoreUrlRegexes.some(r => r.test(u))) {
-          tl.info(`  Ignored: ${u}`);
+          console.log(`  Ignored: ${u}`);
           continue;
         }
         allLinks.push({ file: f, url: u });
@@ -164,7 +164,7 @@ async function main() {
     }
 
     const tasks = Array.from(new Map(allLinks.map(x => [`${x.file}>>${x.url}`, x])).values());
-    tl.info(`Total unique links: ${tasks.length}`);
+    console.log(`Total unique links: ${tasks.length}`);
 
     const broken: Broken[] = [];
     let idx = 0;
@@ -184,7 +184,7 @@ async function main() {
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
     if (broken.length > 0) {
-      tl.info(`Broken links: ${broken.length}`);
+      console.log(`Broken links: ${broken.length}`);
       for (const b of broken) {
         const rel = path.relative(process.cwd(), b.file) || b.file;
         const msg = `${rel}: ${b.url} -> ${b.status ?? b.error ?? "unknown"}`;
