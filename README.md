@@ -1,30 +1,30 @@
-# Broken Links Checker for Azure DevOps
+# Broken Links Checker
 
-Scans source files for absolute `http/https` URLs and checks if they resolve. Optionally fails the build.
+Checks absolute HTTP/HTTPS links in your source during CI.
 
 ## Features
-- Default file globs: `**/*.{html,htm,cshtml,razor,vue,jsx,tsx,svelte,md}`
-- Ignores relative links
-- File exclude globs
-- URL ignore patterns with wildcards (e.g., `example.com/*`, `*.local/*`)
-- Configurable allowed status codes and timeout
-- Parallel requests with configurable concurrency
-- Fail the build or emit warnings only
+- Scans `html`, `cshtml`, `md`, or any other files including links.
+- Ignores relative links.
+- URL ignore patterns with wildcards (`example.com/*`, `*.local/*`)
+- Configurable allowed status codes, timeout, and concurrency.
+- Fail the build on broken links or emit warnings.
 
-## YAML
+## Usage (YAML)
 ```yaml
 steps:
 - task: BrokenLinksChecker@0
   inputs:
     includeGlobs: |
-      **/*.{html,htm,cshtml,razor,vue,jsx,tsx,svelte,md}
+      **/*.html
+      **/*.htm
+      **/*.cshtml
+      **/*.razor
     excludeFileGlobs: |
       **/node_modules/**
       **/dist/**
     ignoreUrlPatterns: |
       *.local/*
       example.com/*
-      staging.elmah.io/*
     failOnBroken: true
     concurrency: 16
     timeoutMs: 10000
