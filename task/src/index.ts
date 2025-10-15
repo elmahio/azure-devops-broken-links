@@ -116,7 +116,6 @@ async function checkUrl(
     return { ok: allowed(res.status), status: res.status };
   } catch (e: any) {
     const code = e?.code || e?.response?.status || e?.message || "request_error";
-    tl.error(`  ERROR ${url}: ${code}`);
     return { ok: false, error: String(code) };
   }
 }
