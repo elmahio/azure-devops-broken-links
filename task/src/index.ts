@@ -107,8 +107,10 @@ async function checkUrl(
   allowed: (n: number) => boolean
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
+    tl.debug(`Checking URL: ${url}`);
     // one GET, axios follows redirects up to maxRedirects
     const res = await client.get(url);
+    tl.debug(`Received response for ${url}: ${res.status}`);
     return { ok: allowed(res.status), status: res.status };
   } catch (e: any) {
     const code = e?.code || e?.response?.status || e?.message || "request_error";
