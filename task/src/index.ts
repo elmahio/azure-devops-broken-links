@@ -107,12 +107,8 @@ async function checkUrl(
   allowed: (n: number) => boolean
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
-    let res: AxiosResponse;
-    try {
-      res = await client.head(url);
-    } catch {
-      res = await client.get(url);
-    }
+    // one GET, axios follows redirects up to maxRedirects
+    const res = await client.get(url);
     return { ok: allowed(res.status), status: res.status };
   } catch (e: any) {
     const code = e?.code || e?.response?.status || e?.message || "request_error";
@@ -148,7 +144,8 @@ async function main() {
     const failOnBroken = tl.getBoolInput("failOnBroken", false);
     const concurrency = Math.max(1, parseInt(tl.getInput("concurrency", false) || "16", 10));
     const timeoutMs = Math.max(1, parseInt(tl.getInput("timeoutMs", false) || "10000", 10));
-    const allowedStatusSpec = tl.getInput("allowedStatus", false) || "200-299,301,302,307,308";
+    // default only 2xx
+    const allowedStatusSpec = tl.getInput("allowedStatus", false) || "200-299";
 
     const ignoreUrlRegexes = ignoreUrlPatterns.map(toRegexFromWildcard);
     const allowed = buildAllowedStatusFn(allowedStatusSpec);
@@ -164,12 +161,11 @@ async function main() {
       absolute: true
     });
 
-    // --- Collect references: URL -> set of files
     const urlToFiles = new Map<string, Set<string>>();
 
     for (const f of files) {
       let content: string;
-      try { content = fs.readFileSync(f, "utf8"); } catch (e) {
+      try { content = fs.readFileSync(f, "utf8"); } catch {
         continue;
       }
       const links = extractLinks(f, content);
