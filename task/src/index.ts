@@ -97,7 +97,12 @@ function createHttpClient(timeoutMs: number): AxiosInstance {
     validateStatus: () => true,
     httpAgent: new http.Agent({ keepAlive: true }),
     httpsAgent: new https.Agent({ keepAlive: true }),
-    headers: { "User-Agent": "BrokenLinksChecker/1.0" }
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; BrokenLinksChecker/1.0; +https://marketplace.visualstudio.com/items?itemName=elmahio.broken-links-checker)",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.5",
+      "Accept-Encoding": "gzip, deflate, br"
+    }
   });
 }
 
